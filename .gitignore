@@ -1,0 +1,6 @@
+# Environment
+.env
+
+# Build output
+bin/
+*.exe
