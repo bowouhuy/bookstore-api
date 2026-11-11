@@ -1,13 +1,17 @@
-package middleware
+package middleware_test
 
 import (
+	"context"
 	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
-	"github.com/bowouhuy/bookstore-api/internal/auth"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/bowouhuy/bookstore-api/internal/middleware"
 )
 
 // fakeVerifier accepts exactly one token.
@@ -20,119 +24,67 @@ func (fakeVerifier) Verify(token string) (int64, error) {
 	return 0, errors.New("invalid token")
 }
 
-func TestRequireAuth(t *testing.T) {
-	tests := []struct {
-		name         string
-		authHeader   string
-		wantStatus   int
-		wantNextCall bool
+func TestAuth(t *testing.T) {
+	tests := map[string]struct {
+		authHeader string
+		wantErr    bool
 	}{
-		{name: "no header", authHeader: "", wantStatus: http.StatusUnauthorized},
-		{name: "wrong scheme", authHeader: "Basic dXNlcjpwYXNz", wantStatus: http.StatusUnauthorized},
-		{name: "scheme without token", authHeader: "Bearer", wantStatus: http.StatusUnauthorized},
-		{name: "scheme with empty token", authHeader: "Bearer    ", wantStatus: http.StatusUnauthorized},
-		{name: "invalid token", authHeader: "Bearer wrong-token", wantStatus: http.StatusUnauthorized},
-		{name: "valid token", authHeader: "Bearer valid-token", wantStatus: http.StatusOK, wantNextCall: true},
-		{name: "lowercase scheme", authHeader: "bearer valid-token", wantStatus: http.StatusOK, wantNextCall: true},
+		"no header":               {authHeader: "", wantErr: true},
+		"wrong scheme":            {authHeader: "Basic dXNlcjpwYXNz", wantErr: true},
+		"scheme without token":    {authHeader: "Bearer", wantErr: true},
+		"scheme with empty token": {authHeader: "Bearer    ", wantErr: true},
+		"invalid token":           {authHeader: "Bearer wrong-token", wantErr: true},
+		"valid token":             {authHeader: "Bearer valid-token"},
+		"lowercase scheme":        {authHeader: "bearer valid-token"},
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			nextCalled := false
-			var gotUserID int64
-
-			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				nextCalled = true
-				gotUserID, _ = auth.UserIDFromContext(r.Context())
-				w.WriteHeader(http.StatusOK)
-			})
-
-			h := RequireAuth(fakeVerifier{})(next)
-
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
 			req := httptest.NewRequest(http.MethodGet, "/books", nil)
 			if tt.authHeader != "" {
 				req.Header.Set("Authorization", tt.authHeader)
 			}
-			rec := httptest.NewRecorder()
 
-			h.ServeHTTP(rec, req)
+			got, err := middleware.Auth(fakeVerifier{})(req)
 
-			if rec.Code != tt.wantStatus {
-				t.Errorf("status = %d, want %d", rec.Code, tt.wantStatus)
+			if tt.wantErr {
+				var mErr *middleware.Error
+				require.ErrorAs(t, err, &mErr)
+				assert.Equal(t, http.StatusUnauthorized, mErr.Code)
+				assert.NotEmpty(t, mErr.Headers["WWW-Authenticate"], "401 must include WWW-Authenticate")
+				return
 			}
-			if nextCalled != tt.wantNextCall {
-				t.Errorf("next called = %v, want %v", nextCalled, tt.wantNextCall)
-			}
-			if tt.wantNextCall && gotUserID != 42 {
-				t.Errorf("user ID in context = %d, want 42", gotUserID)
-			}
-			if !tt.wantNextCall && rec.Header().Get("WWW-Authenticate") == "" {
-				t.Error("401 response must include WWW-Authenticate header")
-			}
+
+			require.NoError(t, err)
+			userID, ok := middleware.UserIDFromContext(got.Context())
+			assert.True(t, ok)
+			assert.Equal(t, int64(42), userID)
 		})
 	}
 }
 
-func TestRecover(t *testing.T) {
-	panicking := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		var m map[string]int
-		m["boom"] = 1 // writing to a nil map panics
-	})
-
-	h := Recover(panicking)
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
-	}
-	if !strings.Contains(rec.Body.String(), "internal server error") {
-		t.Errorf("unexpected body: %s", rec.Body.String())
-	}
-}
-
-func TestLogging_RecordsStatus(t *testing.T) {
-	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusTeapot)
-	})
-
-	h := Logging(next)
-
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-
-	h.ServeHTTP(rec, req)
-
-	if rec.Code != http.StatusTeapot {
-		t.Errorf("status = %d, want %d (logging must not change the response)", rec.Code, http.StatusTeapot)
-	}
-}
-
-func TestChain_Order(t *testing.T) {
+func TestFilterFunc_StopsAtFirstErrorAndKeepsOrder(t *testing.T) {
 	var order []string
+	type key struct{}
 
-	track := func(name string) Middleware {
-		return func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-				order = append(order, name)
-				next.ServeHTTP(w, r)
-			})
+	track := func(name string, fail bool) middleware.Handle {
+		return func(r *http.Request) (*http.Request, error) {
+			order = append(order, name)
+			if fail {
+				return r, errors.New(name + " failed")
+			}
+			return r.WithContext(context.WithValue(r.Context(), key{}, name)), nil
 		}
 	}
 
-	final := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		order = append(order, "handler")
-	})
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
 
-	h := Chain(final, track("first"), track("second"), track("third"))
-	h.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/", nil))
+	got, err := middleware.FilterFunc(req, []middleware.Handle{track("first", false), track("second", false)})
+	require.NoError(t, err)
+	assert.Equal(t, "second", got.Context().Value(key{}), "later middleware must see earlier context changes")
 
-	got := strings.Join(order, " → ")
-	want := "first → second → third → handler"
-	if got != want {
-		t.Errorf("order = %q, want %q", got, want)
-	}
+	order = nil
+	_, err = middleware.FilterFunc(req, []middleware.Handle{track("first", true), track("second", false)})
+	require.Error(t, err)
+	assert.Equal(t, "first", strings.Join(order, ","), "middleware after a failure must not run")
 }
