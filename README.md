@@ -205,30 +205,39 @@ The `.env` file is read from the current working directory. Variables already se
 
 ## Deployment
 
-`deploy/` contains a production Docker Compose stack: PostgreSQL (not exposed to the internet), the API image built from `Dockerfile` (distroless, non-root), and Caddy as the public reverse proxy on ports 80/443.
+`deploy/` contains a production Docker Compose stack: PostgreSQL (not exposed to the internet) and the API image built from `Dockerfile` (distroless, non-root). Neither publishes a port.
+
+The public entry point is a separate reverse proxy project (Caddy on ports 80/443) that is shared by every app on the server. Apps join the external Docker network `web` and the proxy reaches them by network alias; this API is `bookstore-api:8080`. Stopping or redeploying one app never takes the proxy down for the others.
+
+```
+internet ──► proxy (Caddy :80/:443) ──web network──► bookstore-api:8080 ──► db
+                                     └─────────────► other-app:3000
+```
 
 On the server, from the repository root:
 
 ```bash
-cp deploy/.env.example deploy/.env      # fill in passwords and JWT_SECRET
+docker network create web                # once per server
+cp deploy/.env.example deploy/.env       # fill in passwords and JWT_SECRET
 docker compose -f deploy/docker-compose.yml up -d --build
 docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate up
-curl http://<server-ip>/liveness
 ```
 
-To update after pulling new code:
+The API container reports its own health (`bookstore-api healthcheck`, which calls `/liveness`), visible in `docker compose -f deploy/docker-compose.yml ps`.
 
-```bash
-git pull
-docker compose -f deploy/docker-compose.yml up -d --build api
-docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate up
+A minimal proxy project (for example in `/opt/proxy`) needs a `Caddyfile`:
+
+```
+:80 {
+	reverse_proxy bookstore-api:8080
+}
 ```
 
-To enable HTTPS, point a domain's A record to the server and replace `:80` in `deploy/Caddyfile` with the domain, then run `docker compose -f deploy/docker-compose.yml restart caddy`. Caddy obtains and renews certificates automatically.
+and a `docker-compose.yml` running `caddy:2.10-alpine` with ports `80:80` and `443:443`, the `Caddyfile` mounted at `/etc/caddy/Caddyfile`, volumes for `/data` and `/config`, and the external `web` network. To enable HTTPS, replace `:80` with a domain whose A record points to the server and restart Caddy; it obtains and renews certificates automatically.
 
 ### Continuous deployment
 
-Every push to `master` runs `.github/workflows/deploy.yml`: the tests run first, then GitHub Actions connects to the server over SSH and runs `deploy/deploy.sh` (pull, build, migrate, restart, health check). Pull requests to `master` only run the tests.
+Every push to `master` runs `.github/workflows/deploy.yml`: the tests run first, then GitHub Actions connects to the server over SSH and runs `deploy/deploy.sh` (pull, build, migrate, restart, wait for the container health check). Pull requests to `master` only run the tests.
 
 The SSH key used by GitHub Actions is pinned on the server to that script with a forced command, so a leaked key can only trigger a deploy:
 
@@ -236,9 +245,9 @@ The SSH key used by GitHub Actions is pinned on the server to that script with a
 restrict,command="/opt/bookstore-api/deploy/deploy.sh" ssh-ed25519 AAAA... github-actions-deploy
 ```
 
-Required repository secrets: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` (private key), and `VPS_KNOWN_HOSTS` (output of `ssh-keyscan -t ed25519 <host>`).
+Required repository secrets: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` (private key), and `VPS_KNOWN_HOSTS` (output of `ssh-keyscan <host>`, or the server's `/etc/ssh/ssh_host_*_key.pub` prefixed with the host).
 
-Change server files such as `deploy/Caddyfile` through commits, not by editing them on the server, or `git pull --ff-only` in the deploy script may fail.
+Change files under `deploy/` through commits, not by editing them on the server, or `git pull --ff-only` in the deploy script may fail.
 
 ---
 
