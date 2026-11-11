@@ -1,23 +1,32 @@
 package middleware
 
 import (
-	"encoding/json"
 	"net/http"
 )
 
-type Middleware func(http.Handler) http.Handler
+// Handle is contract for middleware and must implement this type for http if you need middleware http request.
+// It returns the request so a middleware can attach context values, e.g. the authenticated user ID.
+type Handle func(r *http.Request) (*http.Request, error)
 
-// Chain wraps h so the first middleware listed is the outermost.
-func Chain(h http.Handler, middlewares ...Middleware) http.Handler {
-	for i := len(middlewares) - 1; i >= 0; i-- {
-		h = middlewares[i](h)
-	}
-	return h
+// Error stops the request with the given status, message and headers.
+type Error struct {
+	Code    int
+	Message string
+	Headers map[string]string
 }
 
-// writeJSONError mirrors the handler package's error format.
-func writeJSONError(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]string{"error": message})
+func (e *Error) Error() string {
+	return e.Message
+}
+
+// FilterFunc is a iterator resolver in each middleware registered
+func FilterFunc(r *http.Request, mfs []Handle) (*http.Request, error) {
+	for _, mf := range mfs {
+		var err error
+		if r, err = mf(r); err != nil {
+			return r, err
+		}
+	}
+
+	return r, nil
 }
