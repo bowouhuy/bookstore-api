@@ -13,6 +13,7 @@ The project structure follows [yonisaka/go-boilerplate](https://github.com/yonis
 - [Architecture](#architecture)
 - [Project Structure](#project-structure)
 - [Getting Started](#getting-started)
+- [Deployment](#deployment)
 - [Configuration](#configuration)
 - [Database Migrations](#database-migrations)
 - [API Reference](#api-reference)
@@ -199,6 +200,31 @@ go build -o bin/bookstore-api .
 ```
 
 The `.env` file is read from the current working directory. Variables already set in the environment take precedence.
+
+---
+
+## Deployment
+
+`deploy/` contains a production Docker Compose stack: PostgreSQL (not exposed to the internet), the API image built from `Dockerfile` (distroless, non-root), and Caddy as the public reverse proxy on ports 80/443.
+
+On the server, from the repository root:
+
+```bash
+cp deploy/.env.example deploy/.env      # fill in passwords and JWT_SECRET
+docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate up
+curl http://<server-ip>/liveness
+```
+
+To update after pulling new code:
+
+```bash
+git pull
+docker compose -f deploy/docker-compose.yml up -d --build api
+docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate up
+```
+
+To enable HTTPS, point a domain's A record to the server and replace `:80` in `deploy/Caddyfile` with the domain, then run `docker compose -f deploy/docker-compose.yml restart caddy`. Caddy obtains and renews certificates automatically.
 
 ---
 
