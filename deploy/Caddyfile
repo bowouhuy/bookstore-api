@@ -1,0 +1,8 @@
+# Without a domain, serve plain HTTP on port 80.
+# With a domain, replace ":80" with the domain (e.g. "api.example.com"),
+# point its DNS A record to this server, and restart Caddy:
+# it obtains and renews HTTPS certificates automatically.
+:80 {
+	encode gzip
+	reverse_proxy api:8080
+}
