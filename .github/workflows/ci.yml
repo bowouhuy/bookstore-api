@@ -1,10 +1,9 @@
 name: CI Workflow
 
+# Pushes to master are tested by deploy.yml before deploying.
 on:
-  push:
-    branches: [ "main" ]
   pull_request:
-    branches: [ "main" ]
+    branches: [ "master" ]
 
 jobs:
   test:
