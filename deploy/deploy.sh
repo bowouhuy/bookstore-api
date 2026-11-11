@@ -20,19 +20,24 @@ fi
 APP_VERSION="$(git rev-parse --short HEAD)"
 export APP_VERSION
 
+docker network inspect web >/dev/null 2>&1 || docker network create web
+
 # Build before migrating so a broken build never leaves the schema ahead of the running API.
 compose build api
 compose --profile tools run --rm migrate up
-compose up -d
+compose up -d --remove-orphans
 
+# Use the container's own health check, so this works whatever the proxy is routing to.
+container="$(compose ps -q api)"
 for _ in $(seq 1 30); do
-	if curl -fsS http://127.0.0.1/liveness >/dev/null; then
+	status="$(docker inspect --format '{{.State.Health.Status}}' "$container")"
+	if [ "$status" = "healthy" ]; then
 		echo "Deployed $(git rev-parse --short HEAD), API is healthy"
 		exit 0
 	fi
 	sleep 2
 done
 
-echo "API did not become healthy" >&2
+echo "API did not become healthy (status: $status)" >&2
 compose logs --tail 50 api >&2
 exit 1

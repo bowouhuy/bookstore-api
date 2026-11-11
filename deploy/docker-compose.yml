@@ -57,25 +57,26 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    # No published ports: the shared reverse proxy reaches it as bookstore-api:8080 on the "web" network.
+    networks:
+      default:
+      web:
+        aliases: [bookstore-api]
+    healthcheck:
+      test: ["CMD", "/bookstore-api", "healthcheck"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+      start_interval: 2s
     # Longer than the server's 10s shutdown timeout so in-flight requests can finish.
     stop_grace_period: 15s
     logging: *default-logging
 
-  caddy:
-    image: caddy:2.10-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy_data:/data
-      - caddy_config:/config
-    depends_on:
-      - api
-    logging: *default-logging
-
 volumes:
   pgdata:
-  caddy_data:
-  caddy_config:
+
+networks:
+  # Shared with the reverse proxy project; created by deploy.sh if missing.
+  web:
+    external: true
