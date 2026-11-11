@@ -1,0 +1,73 @@
+messages:
+  - code: 200
+    contents:
+      - lang: en
+        text: "OK"
+      - lang: id
+        text: "Berhasil"
+  - code: 201
+    contents:
+      - lang: en
+        text: "Created"
+      - lang: id
+        text: "Berhasil dibuat"
+  - code: 204
+    contents:
+      - lang: en
+        text: "No Content"
+      - lang: id
+        text: "Tidak ada konten"
+  - code: 400
+    contents:
+      - lang: en
+        text: "Bad Request"
+      - lang: id
+        text: "Permintaan tidak valid"
+  - code: 401
+    contents:
+      - lang: en
+        text: "Unauthorized"
+      - lang: id
+        text: "Tidak terautentikasi"
+  - code: 404
+    contents:
+      - lang: en
+        text: "Resource not found"
+      - lang: id
+        text: "Data tidak ditemukan"
+  - code: 405
+    contents:
+      - lang: en
+        text: "Method not allowed"
+      - lang: id
+        text: "Metode tidak diizinkan"
+  - code: 409
+    contents:
+      - lang: en
+        text: "Conflict"
+      - lang: id
+        text: "Data sudah ada"
+  - code: 413
+    contents:
+      - lang: en
+        text: "Request body too large"
+      - lang: id
+        text: "Ukuran permintaan terlalu besar"
+  - code: 422
+    contents:
+      - lang: en
+        text: "Validation failed"
+      - lang: id
+        text: "Validasi gagal"
+  - code: 500
+    contents:
+      - lang: en
+        text: "Something went wrong, please try again later"
+      - lang: id
+        text: "Terjadi kesalahan, silakan coba lagi nanti"
+  - code: 503
+    contents:
+      - lang: en
+        text: "Service unavailable"
+      - lang: id
+        text: "Layanan tidak tersedia"
