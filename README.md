@@ -226,6 +226,20 @@ docker compose -f deploy/docker-compose.yml --profile tools run --rm migrate up
 
 To enable HTTPS, point a domain's A record to the server and replace `:80` in `deploy/Caddyfile` with the domain, then run `docker compose -f deploy/docker-compose.yml restart caddy`. Caddy obtains and renews certificates automatically.
 
+### Continuous deployment
+
+Every push to `master` runs `.github/workflows/deploy.yml`: the tests run first, then GitHub Actions connects to the server over SSH and runs `deploy/deploy.sh` (pull, build, migrate, restart, health check). Pull requests to `master` only run the tests.
+
+The SSH key used by GitHub Actions is pinned on the server to that script with a forced command, so a leaked key can only trigger a deploy:
+
+```
+restrict,command="/opt/bookstore-api/deploy/deploy.sh" ssh-ed25519 AAAA... github-actions-deploy
+```
+
+Required repository secrets: `VPS_HOST`, `VPS_USER`, `VPS_SSH_KEY` (private key), and `VPS_KNOWN_HOSTS` (output of `ssh-keyscan -t ed25519 <host>`).
+
+Change server files such as `deploy/Caddyfile` through commits, not by editing them on the server, or `git pull --ff-only` in the deploy script may fail.
+
 ---
 
 ## Configuration
