@@ -1,0 +1,9 @@
+.git
+.github
+.idea
+.coverage
+bin
+*.exe
+**/.env
+development
+deploy
