@@ -29,7 +29,7 @@ func (cmd *Command) httpStart() *cli.Command {
 
 			httpServer := server.NewHTTPServer()
 
-			logger.Info(logger.MessageFormat("starting %s on port %d", cmd.App.Name, cmd.App.Port), logger.EventName(consts.LogEventNameServiceStarting))
+			logger.Info(logger.MessageFormat("starting %s %s on port %d", cmd.App.Name, config.Version, cmd.App.Port), logger.EventName(consts.LogEventNameServiceStarting))
 
 			return httpServer.Run()
 		},

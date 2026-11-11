@@ -43,6 +43,8 @@ services:
   api:
     build:
       context: ..
+      args:
+        VERSION: ${APP_VERSION:-dev}
     image: bookstore-api:latest
     restart: unless-stopped
     env_file: .env
