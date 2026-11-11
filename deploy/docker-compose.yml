@@ -1,0 +1,79 @@
+name: bookstore
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER_MASTER:?set in deploy/.env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD_MASTER:?set in deploy/.env}
+      POSTGRES_DB: ${POSTGRES_DB_MASTER:?set in deploy/.env}
+    # No published ports: the database is reachable only from other containers.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    logging: *default-logging
+
+  migrate:
+    image: migrate/migrate:v4.18.1
+    profiles: ["tools"]
+    volumes:
+      - ../migrations:/migrations:ro
+    entrypoint:
+      [
+        "migrate",
+        "-path", "/migrations",
+        "-database", "postgres://${POSTGRES_USER_MASTER}:${POSTGRES_PASSWORD_MASTER}@db:5432/${POSTGRES_DB_MASTER}?sslmode=disable",
+      ]
+    command: ["up"]
+    depends_on:
+      db:
+        condition: service_healthy
+
+  api:
+    build:
+      context: ..
+    image: bookstore-api:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      APP_PORT: "8080"
+      POSTGRES_HOST_MASTER: db
+      POSTGRES_PORT_MASTER: "5432"
+      POSTGRES_HOST_SLAVE: db
+      POSTGRES_PORT_SLAVE: "5432"
+    depends_on:
+      db:
+        condition: service_healthy
+    # Longer than the server's 10s shutdown timeout so in-flight requests can finish.
+    stop_grace_period: 15s
+    logging: *default-logging
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - api
+    logging: *default-logging
+
+volumes:
+  pgdata:
+  caddy_data:
+  caddy_config:
