@@ -1,9 +1,12 @@
 package di
 
-import "github.com/bowouhuy/bookstore-api/internal/adapters/httphandler"
+import (
+	"github.com/bowouhuy/bookstore-api/config"
+	"github.com/bowouhuy/bookstore-api/internal/adapters/httphandler"
+)
 
 func GetHealthHandler() httphandler.Handler {
-	return httphandler.NewHealthHandler(GetHealthUsecase())
+	return httphandler.NewHealthHandler(GetHealthUsecase(), config.Version)
 }
 
 func GetRegisterHandler() httphandler.Handler {
