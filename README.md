@@ -314,7 +314,7 @@ Protected endpoints require `Authorization: Bearer <access_token>`. The scheme n
 
 ### `GET /liveness`
 
-`200` with `"message": "Service is healthy"`, or `503` when a database is unreachable.
+`200` with `"message": "Service is healthy"` and `"data": {"version": "<commit>"}`, or `503` when a database is unreachable. The version is the short Git commit the image was built from (`dev` for local builds), so it shows which commit is deployed.
 
 ### `POST /auth/register`
 

@@ -7,7 +7,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/bookstore-api .
+ARG VERSION=dev
+RUN CGO_ENABLED=0 go build -trimpath \
+	-ldflags="-s -w -X github.com/bowouhuy/bookstore-api/config.Version=${VERSION}" \
+	-o /out/bookstore-api .
 
 # distroless: no shell or package manager, runs as a non-root user.
 FROM gcr.io/distroless/static-debian12:nonroot

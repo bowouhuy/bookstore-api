@@ -11,6 +11,15 @@ compose() {
 
 git pull --ff-only
 
+# Restart with the freshly pulled copy so changes to this script apply to the current deploy.
+if [ -z "${DEPLOY_REEXEC:-}" ]; then
+	DEPLOY_REEXEC=1 exec "$0" "$@"
+fi
+
+# Baked into the binary and shown by GET /liveness.
+APP_VERSION="$(git rev-parse --short HEAD)"
+export APP_VERSION
+
 # Build before migrating so a broken build never leaves the schema ahead of the running API.
 compose build api
 compose --profile tools run --rm migrate up
